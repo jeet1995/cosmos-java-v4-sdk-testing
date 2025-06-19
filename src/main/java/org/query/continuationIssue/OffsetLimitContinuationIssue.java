@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
@@ -21,9 +22,9 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class OffsetLimitContinuationIssue {
 
-    private static final Integer ITEM_COUNT = 300_000;
-    private static final String DATABASE_NAME = "testContinuationIssueDb";
-    private static final String CONTAINER_NAME = "testContinuationIssueCt";
+    private static final Integer ITEM_COUNT = 800;
+    private static final String DATABASE_NAME = "CRI";
+    private static final String CONTAINER_NAME = "AdobeQuery";
 
     private static final LocalDateTime[] POSSIBLE_DATES = new LocalDateTime[10];
 
@@ -56,8 +57,8 @@ public class OffsetLimitContinuationIssue {
             // insertDocuments(testContinuationIssueContainer, threadLocalRandom);
 
             for (int i = 0; i < 10; i++) {
-                runQueryWithContinuation(testContinuationIssueContainer, 1000);
-                runOffsetLimitQuery(testContinuationIssueContainer, 1000);
+                 runQueryWithContinuation(testContinuationIssueContainer, 10000);
+                //runOffsetLimitQuery(testContinuationIssueContainer, 10);
             }
 
         } catch (Exception e) {
@@ -112,7 +113,7 @@ public class OffsetLimitContinuationIssue {
 
 //            String query = "SELECT * FROM c" + " OFFSET " + (pageSize * pageCount) + " LIMIT " + pageSize;
             CosmosQueryRequestOptions options = new CosmosQueryRequestOptions();
-            options.setQueryMetricsEnabled(false);
+            options.setQueryMetricsEnabled(true);
 
             CosmosPagedIterable<Entity> iterable = cosmosContainer.queryItems(query, options, Entity.class);
 
@@ -135,20 +136,25 @@ public class OffsetLimitContinuationIssue {
         List<Entity> entities = new ArrayList<>();
         //String query = "SELECT * FROM c WHERE c.expectedProcessTime >= '2025-02-19T15:40' AND c.expectedProcessTime <= '2026-02-19T15:40'";
 
-        String query = "SELECT * FROM c WHERE c.expectedProcessTime >= '2019-06-01T00:00' AND c.expectedProcessTime <= '2039-06-01T00:00'";
+        String query = "SELECT * FROM c WHERE c.expectedProcessTime >= '2011-06-01T00:00' AND c.expectedProcessTime <= '2072-06-01T00:00' AND c.status = 'SENT'";
         do {
 
             CosmosQueryRequestOptions options = new CosmosQueryRequestOptions();
-            options.setQueryMetricsEnabled(false);
 
-            CosmosPagedIterable<Entity> iterable = cosmosContainer.queryItems(query, options, Entity.class);
+            CosmosPagedIterable<Entity> iterator = cosmosContainer
+                    .queryItems(query, options, Entity.class);
 
-            for (FeedResponse<Entity> feedResponse : iterable.iterableByPage(continuationToken, pageSize)) {
-                entities.addAll(feedResponse.getResults());
+            for (FeedResponse<Entity> feedResponse : iterator.iterableByPage(continuationToken, pageSize)) {
+                logger.info("FeedResponse#getResults size : {}", feedResponse.getResults().size());
+
+                for (Entity entity : feedResponse.getResults()) {
+                    entities.add(entity);
+                }
 
                 continuationToken = feedResponse.getContinuationToken();
             }
 
+            logger.info("continuationToken : {}", continuationToken);
         } while (continuationToken != null);
 
         logger.info("Total records through continuation token : {}", entities.size());
@@ -159,6 +165,7 @@ public class OffsetLimitContinuationIssue {
         return new CosmosClientBuilder()
                 .endpoint(TestConfigurations.HOST)
                 .key(TestConfigurations.MASTER_KEY)
+                .gatewayMode()
                 .buildClient();
     }
 }
