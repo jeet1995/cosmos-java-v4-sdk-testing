@@ -45,6 +45,10 @@ public class QueryPerfIssue {
             StringUtils.defaultString(Strings.emptyToNull(
                     System.getenv().get("ITERATIONS")), "100")));
 
+    private static final int PAGE_SIZE = Integer.parseInt(System.getProperty("PAGE_SIZE",
+            StringUtils.defaultString(Strings.emptyToNull(
+                    System.getenv().get("PAGE_SIZE")), "1000")));
+
     private static final String CONNECTION_MODE = System.getProperty("CONNECTION_MODE",
             StringUtils.defaultString(Strings.emptyToNull(
                     System.getenv().get("CONNECTION_MODE")), "direct"));
@@ -113,7 +117,7 @@ public class QueryPerfIssue {
 //                options.setMaxBufferedItemCount(10000);
 
                     container.queryItems(querySpec, options, Tick.class)
-                            .byPage(continuationToken.get(), 1000)
+                            .byPage(continuationToken.get(), PAGE_SIZE)
                             .doOnSubscribe(subscription -> {
                                 start.set(Instant.now());
                             })
