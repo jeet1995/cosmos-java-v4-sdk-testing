@@ -80,7 +80,7 @@ public class QueryPerfIssue {
         CosmosAsyncContainer container
                 = client.getDatabase("ric_database").getContainer("container_20241007y");
 
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 100; i++) {
 
             final int finalI = (i + 1);
 
@@ -146,6 +146,12 @@ public class QueryPerfIssue {
 
             System.out.println("Total results: " + resultCount.get());
             System.out.println("Total duration: " + duration.get().toMillis() + " ms");
+
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 }
