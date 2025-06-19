@@ -74,7 +74,7 @@ public class QueryPerfIssue {
                 .endpoint("https://abhm-cosmos-single-write.documents.azure.com:443/")
                 .credential(CREDENTIAL)
                 .directMode()
-                .preferredRegions(Arrays.asList("West US"))
+                .preferredRegions(Arrays.asList("East US 2"))
                 .buildAsyncClient();
 
         CosmosAsyncContainer container
