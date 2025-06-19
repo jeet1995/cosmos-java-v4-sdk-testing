@@ -41,9 +41,9 @@ public class QueryPerfIssue {
             .tenantId(AAD_TENANT_ID)
             .build();
 
-    private static final int ITERATIONS = Integer.parseInt(System.getProperty("AAD_TENANT_ID",
+    private static final int ITERATIONS = Integer.parseInt(System.getProperty("ITERATIONS",
             StringUtils.defaultString(Strings.emptyToNull(
-                    System.getenv().get("AAD_TENANT_ID")), "100")));
+                    System.getenv().get("ITERATIONS")), "100")));
 
     private static final String CONNECTION_MODE = System.getProperty("CONNECTION_MODE",
             StringUtils.defaultString(Strings.emptyToNull(
@@ -113,7 +113,7 @@ public class QueryPerfIssue {
 //                options.setMaxBufferedItemCount(10000);
 
                     container.queryItems(querySpec, options, Tick.class)
-                            .byPage(continuationToken.get(), 10000)
+                            .byPage(continuationToken.get(), 1000)
                             .doOnSubscribe(subscription -> {
                                 start.set(Instant.now());
                             })
