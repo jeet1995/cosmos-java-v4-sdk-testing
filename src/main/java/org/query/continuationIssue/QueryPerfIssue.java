@@ -1,6 +1,7 @@
 package org.query.continuationIssue;
 
 import com.azure.core.credential.TokenCredential;
+import com.azure.cosmos.ConnectionMode;
 import com.azure.cosmos.CosmosAsyncClient;
 import com.azure.cosmos.CosmosAsyncContainer;
 import com.azure.cosmos.CosmosClientBuilder;
@@ -40,12 +41,15 @@ public class QueryPerfIssue {
             .tenantId(AAD_TENANT_ID)
             .build();
 
+    private static final int ITERATIONS = Integer.parseInt(System.getProperty("AAD_TENANT_ID",
+            StringUtils.defaultString(Strings.emptyToNull(
+                    System.getenv().get("AAD_TENANT_ID")), "100")));
+
+    private static final String CONNECTION_MODE = System.getProperty("CONNECTION_MODE",
+            StringUtils.defaultString(Strings.emptyToNull(
+                    System.getenv().get("CONNECTION_MODE")), "direct"));
+
     public static void main(String[] args) {
-//
-//        String query = "SELECT * FROM c WHERE c.pk IN ('AAPL|20241007|1', 'AAPL|20241007|2', 'AAPL|20241007|3', 'AAPL|20241007|4', 'AAPL|20241007|5', 'AAPL|20241007|6', 'AAPL|20241007|7', 'AAPL|20241007|8') AND c.messageTimestamp >= '1728259200000000000' AND c.messageTimestamp <= '1728345599000000000' ORDER BY c.messageTimestamp DESC";
-
-//        String query = "SELECT * FROM C WHERE C.pk LIKE 'AAPL%' ORDER BY C.messageTimestamp DESC";
-
         List<SqlParameter> sqlParameters = new ArrayList<>();
 
         sqlParameters.add(new SqlParameter("@pk1", "AAPL|20241007|1"));
@@ -70,87 +74,98 @@ public class QueryPerfIssue {
 
         SqlQuerySpec querySpec = new SqlQuerySpec(query, sqlParameters);
 
-        CosmosAsyncClient client = new CosmosClientBuilder()
-                .endpoint("https://abhm-cosmos-single-write.documents.azure.com:443/")
-                .credential(CREDENTIAL)
-                .directMode()
-                .preferredRegions(Arrays.asList("East US 2"))
-                .buildAsyncClient();
+        CosmosAsyncClient client = null;
 
-        CosmosAsyncContainer container
-                = client.getDatabase("ric_database").getContainer("container_20241007y");
+        try {
+            CosmosClientBuilder clientBuilder = new CosmosClientBuilder()
+                    .endpoint("https://abhm-cosmos-single-write.documents.azure.com:443/")
+                    .credential(CREDENTIAL)
+                    .directMode()
+                    .preferredRegions(Arrays.asList("East US 2"));
 
-        for (int i = 0; i < 100; i++) {
+            if (CONNECTION_MODE.trim().equalsIgnoreCase("direct")) {
+                clientBuilder.directMode();
+            } else {
+                clientBuilder.gatewayMode();
+            }
 
-            final int finalI = (i + 1);
+            client = clientBuilder.buildAsyncClient();
 
-            AtomicInteger resultCount = new AtomicInteger(0);
-            AtomicReference<String> continuationToken = new AtomicReference<>();
+            CosmosAsyncContainer container
+                    = client.getDatabase("ric_database").getContainer("container_20241007y");
 
-            AtomicReference<Duration> duration = new AtomicReference<>(Duration.ofSeconds(0));
+            for (int i = 0; i < ITERATIONS; i++) {
 
-            do {
+                final int finalI = (i + 1);
 
-                AtomicReference<Instant> start = new AtomicReference<>(Instant.now());
-                AtomicReference<Instant> end = new AtomicReference<>(Instant.now());
-                CosmosQueryRequestOptions options = new CosmosQueryRequestOptions();
+                AtomicInteger resultCount = new AtomicInteger(0);
+                AtomicReference<String> continuationToken = new AtomicReference<>();
 
-                options.setMaxDegreeOfParallelism(3000);
+                AtomicReference<Duration> duration = new AtomicReference<>(Duration.ofSeconds(0));
+
+                do {
+
+                    AtomicReference<Instant> start = new AtomicReference<>(Instant.now());
+                    AtomicReference<Instant> end = new AtomicReference<>(Instant.now());
+                    CosmosQueryRequestOptions options = new CosmosQueryRequestOptions();
+
+                    options.setMaxDegreeOfParallelism(3000);
 //                options.setMaxBufferedItemCount(10000);
 
-                container.queryItems(querySpec, options, Tick.class)
-                        .byPage(continuationToken.get(), 10000)
-                        .doOnSubscribe(subscription -> {
-                            start.set(Instant.now());
-                        })
-                        .doOnComplete(() -> {
-                            end.set(Instant.now());
-                            duration.set(Duration.between(start.get(), end.get()));
-                        })
+                    container.queryItems(querySpec, options, Tick.class)
+                            .byPage(continuationToken.get(), 10000)
+                            .doOnSubscribe(subscription -> {
+                                start.set(Instant.now());
+                            })
+                            .doOnComplete(() -> {
+                                end.set(Instant.now());
+                                duration.set(Duration.between(start.get(), end.get()));
+                            })
 //                        .collectList()
-                        .doOnNext(result -> {
-                            System.out.println("Page from iteration :" + finalI + result.getContinuationToken());
-                        })
-                        .doOnNext(result -> {
-                            System.out.println("Time now : " + Instant.now());
-                            System.out.println("Result count : " + resultCount.get());
-                            System.out.println("Diagnostics : " + result.getCosmosDiagnostics());
-                            System.out.println("E2E Duration (diagnostics): " + result.getCosmosDiagnostics().getDuration());
-                            System.out.println("E2E Duration (diagnosticsContext): " + result.getCosmosDiagnostics().getDiagnosticsContext().getDuration());
-                        })
-                        .flatMap(tickFeedResponse -> {
-                            continuationToken.set(tickFeedResponse.getContinuationToken());
-                            resultCount.addAndGet(tickFeedResponse.getResults().size());
+                            .doOnNext(result -> {
+                                System.out.println("Page from iteration :" + finalI + result.getContinuationToken());
+                            })
+                            .doOnNext(result -> {
+                                System.out.println("Time now : " + Instant.now());
+                                System.out.println("Result count : " + resultCount.get());
+                                System.out.println("Diagnostics : " + result.getCosmosDiagnostics());
+                                System.out.println("E2E Duration (diagnostics): " + result.getCosmosDiagnostics().getDuration());
+                                System.out.println("E2E Duration (diagnosticsContext): " + result.getCosmosDiagnostics().getDiagnosticsContext().getDuration());
+                            })
+                            .flatMap(tickFeedResponse -> {
+                                continuationToken.set(tickFeedResponse.getContinuationToken());
+                                resultCount.addAndGet(tickFeedResponse.getResults().size());
 
-                            tickFeedResponse.getCosmosDiagnostics().getDiagnosticsContext().getDuration();
+                                tickFeedResponse.getCosmosDiagnostics().getDiagnosticsContext().getDuration();
 
-                            return Flux.just(tickFeedResponse.getResults());
-                        })
-                        .doOnSubscribe(subscription -> {
-                            start.set(Instant.now());
-                            System.out.println("Start: " + start.get());
-                        })
-                        .doOnTerminate(() -> {
-                            end.set(Instant.now());
-                            duration.set(Duration.between(start.get(), end.get()));
-                        })
-//                        .block();
-//                        .doOnComplete(() -> {
-//                            end.set(Instant.now());
-//                            System.out.println("Page processed in duration: " + Duration.between(start.get(), end.get()).toMillis() + " ms");
-//                            duration.set(Duration.between(start.get(), end.get()));
-//                            System.out.println("End: " + end.get());
-//                        })
-                        .blockLast();
-            } while (continuationToken.get() != null);
+                                return Flux.just(tickFeedResponse.getResults());
+                            })
+                            .doOnSubscribe(subscription -> {
+                                start.set(Instant.now());
+                                System.out.println("Start: " + start.get());
+                            })
+                            .doOnTerminate(() -> {
+                                end.set(Instant.now());
+                                duration.set(Duration.between(start.get(), end.get()));
+                            })
+                            .onErrorResume(throwable -> Flux.empty())
+                            .blockLast();
+                } while (continuationToken.get() != null);
 
-            System.out.println("Total results: " + resultCount.get());
-            System.out.println("Total duration: " + duration.get().toMillis() + " ms");
+                System.out.println("Total results: " + resultCount.get());
+                System.out.println("Total duration: " + duration.get().toMillis() + " ms");
 
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            if (client != null) {
+                client.close();
             }
         }
     }
